@@ -20,7 +20,8 @@ services:
       /bin/sh -c "
       ollama serve &
       sleep 5 &&
-      ollama pull deepseek-v2:16b &&
+      ollama pull llama3.2:3b &&
+      ollama pull nomic-embed-text-v2-moe &&
       wait
       "
 
@@ -49,8 +50,27 @@ services:
       - N8N_BASIC_AUTH_PASSWORD=yourpassword
     volumes:
       - n8n_data:/home/node/.n8n
+  postgres:
+    image: postgres:17
+    restart: always
+    shm_size: 128mb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=88888888
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=n8ndb
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
 
 volumes:
   ollama_data:
   webui_data:
   n8n_data:
+  postgres_data:
