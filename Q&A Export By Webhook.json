@@ -1,0 +1,158 @@
+{
+  "name": "Q&A Export By Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "30be787b-0341-4ffc-8822-de253b1fad35",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "82c59086-6773-4bc3-89d0-8af2f229944e",
+      "name": "Webhook",
+      "webhookId": "30be787b-0341-4ffc-8822-de253b1fad35"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "chat_questions",
+          "mode": "list",
+          "cachedResultName": "chat_questions"
+        },
+        "limit": 100,
+        "where": {
+          "values": []
+        },
+        "sort": {
+          "values": [
+            {
+              "column": "time",
+              "direction": "DESC"
+            }
+          ]
+        },
+        "options": {
+          "outputColumns": [
+            "*"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "id": "6dbf315c-5d6f-4f02-b4bb-ba98c8470be1",
+      "name": "Select rows from a table",
+      "credentials": {
+        "postgres": {
+          "id": "AHWej06kar43BDea",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "={{ $json.message }}{{ $json.time }}",
+        "options": {
+          "fileName": "chat_questions"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "be77091e-15fc-4ccc-8099-7a2b8ce6c474",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Disposition",
+                "value": "attachment; filename=\"export.csv\""
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "acec8e99-57e7-48e7-9115-45414c92d785",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Select rows from a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select rows from a table": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "a2219a98-a0fd-46de-bac6-b00ea03ea21f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ae7d4673ff9766b402f8696a340ffa6dc86d4d4f1f3ed20a7a7155682c85d1c1"
+  },
+  "id": "2azX86LtGYWfPcMn",
+  "tags": []
+}

@@ -1,5 +1,5 @@
 {
-  "name": "My Sub-Workflow 1",
+  "name": "Q&A Workflow",
   "nodes": [
     {
       "parameters": {
@@ -8,8 +8,8 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
       "typeVersion": 1.3,
       "position": [
-        1248,
-        560
+        1184,
+        480
       ],
       "id": "63437b2b-96b3-4748-b546-a7d40115f61b",
       "name": "Postgres PGVector Store2",
@@ -27,8 +27,8 @@
       "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "typeVersion": 1,
       "position": [
-        1040,
-        656
+        1264,
+        688
       ],
       "id": "a33e7e2a-c3a0-4d13-b0cd-447d43169082",
       "name": "Embeddings Ollama",
@@ -46,8 +46,8 @@
       "type": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
       "typeVersion": 1,
       "position": [
-        1200,
-        384
+        1184,
+        272
       ],
       "id": "d0708a28-760b-42bb-8e8f-f631ebe9ca58",
       "name": "Vector Store Retriever",
@@ -64,13 +64,12 @@
       "type": "@n8n/n8n-nodes-langchain.chainRetrievalQa",
       "typeVersion": 1.7,
       "position": [
-        1008,
-        64
+        1088,
+        48
       ],
       "id": "b1f7fb2c-c781-4dc5-aa13-14d9577a7568",
       "name": "Question and Answer Chain",
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "alwaysOutputData": false
     },
     {
       "parameters": {
@@ -80,7 +79,7 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
       "position": [
-        896,
+        1056,
         272
       ],
       "id": "39c5decc-2b5b-403a-bd90-f9687254253e",
@@ -97,18 +96,93 @@
     {
       "parameters": {
         "options": {
-          "responseMode": "lastNode"
+          "responseMode": "responseNodes"
         }
       },
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
       "position": [
-        608,
+        560,
         48
       ],
       "id": "c7ad2adb-fc78-409e-b451-b2f305f14c64",
       "name": "When chat message received",
       "webhookId": "bd02439f-9d0b-4f72-9c66-263dd3462f22"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "chat_questions",
+          "mode": "list",
+          "cachedResultName": "chat_questions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "message": "={{ $('When chat message received').item.json.chatInput }}",
+            "time": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "time",
+              "displayName": "time",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1456,
+        48
+      ],
+      "id": "9d3e4ea5-395f-4973-8c67-dfe75e21d334",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "AHWej06kar43BDea",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "message": "={{ $('Question and Answer Chain').item.json.response }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.2,
+      "position": [
+        1696,
+        48
+      ],
+      "id": "3e9f11cc-e671-49ca-a865-359b3cfaa9c8",
+      "name": "Chat",
+      "webhookId": "afd5ce3d-f633-4109-a15e-810d950d9097"
     }
   ],
   "pinData": {},
@@ -167,6 +241,28 @@
           }
         ]
       ]
+    },
+    "Question and Answer Chain": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -174,8 +270,9 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "bc1193a2-728d-489f-82db-195ac1f74478",
+  "versionId": "8fccf03c-4cf3-4df2-8fdc-eb1eb8337fc0",
   "meta": {
+    "templateCredsSetupCompleted": true,
     "instanceId": "ae7d4673ff9766b402f8696a340ffa6dc86d4d4f1f3ed20a7a7155682c85d1c1"
   },
   "id": "nBlxgbgB9pShy8Ig",
