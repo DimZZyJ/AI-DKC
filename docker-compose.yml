@@ -22,6 +22,7 @@ services:
       sleep 5 &&
       ollama pull llama3.2:3b &&
       ollama pull nomic-embed-text-v2-moe &&
+      ollama pull bge-m3 &&
       wait
       "
 
