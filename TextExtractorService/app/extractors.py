@@ -1,7 +1,11 @@
 import io
 import logging
 
-from docx import Document
+from docx import Document as open_docx
+from docx.document import Document as DocxDocument
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from PIL import Image
 from pypdf import PdfReader
 import pytesseract
@@ -9,107 +13,198 @@ from pdf2image import convert_from_bytes
 
 logger = logging.getLogger(__name__)
 
-# Языки OCR. "rus+eng" — русский и английский. Требует установленных
-# языковых пакетов tesseract-ocr-rus и tesseract-ocr-eng в образе.
 OCR_LANGS = "rus+eng"
-
-# Порог: если на странице PDF извлечено меньше символов, считаем её
-# "пустой" (сканом) и запускаем OCR.
 PDF_TEXT_THRESHOLD = 20
+PDF_OCR_DPI = 300
 
+
+# ---------------------------------------------------------------------------
+# OCR
+# ---------------------------------------------------------------------------
 
 def _ocr_image(image: Image.Image) -> str:
-    """Распознаёт текст на PIL-изображении."""
     try:
         return pytesseract.image_to_string(image, lang=OCR_LANGS)
     except pytesseract.TesseractError as e:
         logger.warning("Ошибка Tesseract: %s", e)
         return ""
+    except Exception as e:
+        logger.warning("Неожиданная ошибка OCR: %s", e)
+        return ""
+
+
+def _ocr_image_bytes(blob: bytes) -> str:
+    try:
+        image = Image.open(io.BytesIO(blob))
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        return _ocr_image(image)
+    except Exception as e:
+        logger.warning("Не удалось обработать картинку: %s", e)
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# DOCX
+# ---------------------------------------------------------------------------
+
+def _iter_block_items(parent):
+    """Итерирует тело документа в реальном порядке."""
+    if isinstance(parent, DocxDocument):
+        body = parent.element.body
+        parent_obj = parent
+    else:
+        body = parent._element
+        parent_obj = parent
+
+    for child in body.iterchildren():
+        if child.tag == qn("w:p"):
+            yield Paragraph(child, parent_obj)
+        elif child.tag == qn("w:tbl"):
+            yield Table(child, parent_obj)
+
+
+def _paragraph_images(paragraph: Paragraph, document: DocxDocument) -> list[str]:
+    """OCR всех картинок, встроенных в параграф (fallback-путь)."""
+    results: list[str] = []
+    blips = paragraph._p.findall(".//" + qn("a:blip"))
+    for blip in blips:
+        r_id = blip.get(qn("r:embed"))
+        if not r_id:
+            continue
+        rel = document.part.rels.get(r_id)
+        if rel is None or "image" not in rel.reltype:
+            continue
+        ocr_text = _ocr_image_bytes(rel.target_part.blob).strip()
+        if ocr_text:
+            results.append(ocr_text)
+    return results
+
+
+def _process_paragraph(paragraph: Paragraph, document: DocxDocument) -> list[str]:
+    """Возвращает текст/OCR-блоки параграфа в порядке следования runs."""
+    parts: list[str] = []
+
+    for run in paragraph.runs:
+        blips = run._r.findall(".//" + qn("a:blip"))
+        for blip in blips:
+            r_id = blip.get(qn("r:embed"))
+            if not r_id:
+                continue
+            rel = document.part.rels.get(r_id)
+            if rel is None or "image" not in rel.reltype:
+                continue
+            ocr_text = _ocr_image_bytes(rel.target_part.blob).strip()
+            if ocr_text:
+                parts.append(ocr_text)
+
+        if run.text:
+            parts.append(run.text)
+
+    # Fallback: картинка лежит не в run
+    if not any("a:blip" in run._r.xml for run in paragraph.runs):
+        parts.extend(_paragraph_images(paragraph, document))
+
+    return parts
+
+
+def _process_table(table: Table, document: DocxDocument) -> list[str]:
+    parts: list[str] = []
+    for row in table.rows:
+        for cell in row.cells:
+            for block in _iter_block_items(cell):
+                if isinstance(block, Paragraph):
+                    parts.extend(_process_paragraph(block, document))
+                elif isinstance(block, Table):
+                    parts.extend(_process_table(block, document))
+    return parts
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
-    """Извлекает текст из DOCX (абзацы + таблицы + картинки через OCR)."""
-    document = Document(io.BytesIO(file_bytes))
+    document = open_docx(io.BytesIO(file_bytes))
     parts: list[str] = []
 
-    # Абзацы
-    parts.extend(p.text for p in document.paragraphs if p.text)
+    for block in _iter_block_items(document):
+        if isinstance(block, Paragraph):
+            parts.extend(_process_paragraph(block, document))
+        elif isinstance(block, Table):
+            parts.extend(_process_table(block, document))
 
-    # Таблицы
-    for table in document.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                if cell.text:
-                    parts.append(cell.text)
+    return "\n".join(p for p in parts if p)
 
-    # Картинки внутри DOCX (отношения типа image)
-    for rel in document.part.rels.values():
-        if "image" in rel.reltype:
-            try:
-                image = Image.open(io.BytesIO(rel.target_part.blob))
-                ocr_text = _ocr_image(image)
-                if ocr_text.strip():
-                    parts.append(ocr_text)
-            except Exception as e:
-                logger.warning("Не удалось обработать картинку в DOCX: %s", e)
 
-    return "\n".join(parts)
+# ---------------------------------------------------------------------------
+# PDF
+# ---------------------------------------------------------------------------
+
+def _pdf_has_text_layer(reader: PdfReader) -> bool:
+    total = 0
+    for page in reader.pages:
+        try:
+            total += len((page.extract_text() or "").strip())
+        except Exception:
+            continue
+        if total >= PDF_TEXT_THRESHOLD:
+            return True
+    return False
+
+
+def _render_pdf_pages(file_bytes: bytes) -> list[Image.Image]:
+    return convert_from_bytes(file_bytes, dpi=PDF_OCR_DPI)
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """
-    Извлекает текст из PDF.
-    Для страниц без текстового слоя (сканы) запускает OCR.
-    """
     reader = PdfReader(io.BytesIO(file_bytes))
     pages_text: list[str] = []
 
-    # Быстрая попытка: есть ли вообще текстовый слой
-    plain_pages: list[str] = []
-    for page in reader.pages:
-        plain_pages.append(page.extract_text() or "")
+    has_any_text = _pdf_has_text_layer(reader)
 
-    # Если весь PDF "пустой" — сразу OCR по всем страницам
-    if sum(len(t.strip()) for t in plain_pages) < PDF_TEXT_THRESHOLD:
-        logger.info("PDF похож на скан, запускаем OCR по всем страницам")
-        return _ocr_pdf(file_bytes)
+    if not has_any_text:
+        logger.info("PDF без текстового слоя — OCR по всем страницам")
+        for img in _render_pdf_pages(file_bytes):
+            pages_text.append(_ocr_image(img))
+        return "\n".join(pages_text)
 
-    # Смешанный случай: страницы с текстом берём как есть,
-    # "пустые" страницы отправляем на OCR (поштучно)
-    for idx, text in enumerate(plain_pages):
+    total_pages = len(reader.pages)
+    for idx in range(total_pages):
+        page = reader.pages[idx]
+        try:
+            text = page.extract_text() or ""
+        except Exception as e:
+            logger.warning("Ошибка extract_text на стр. %d: %s", idx + 1, e)
+            text = ""
+
         if len(text.strip()) >= PDF_TEXT_THRESHOLD:
             pages_text.append(text)
         else:
-            pages_text.append(_ocr_pdf_page(file_bytes, idx))
+            try:
+                images = convert_from_bytes(
+                    file_bytes,
+                    dpi=PDF_OCR_DPI,
+                    first_page=idx + 1,
+                    last_page=idx + 1,
+                )
+                pages_text.append(_ocr_image(images[0]) if images else "")
+            except Exception as e:
+                logger.warning("Ошибка OCR стр. %d: %s", idx + 1, e)
+                pages_text.append("")
 
     return "\n".join(pages_text)
 
 
-def _ocr_pdf(file_bytes: bytes) -> str:
-    """OCR всех страниц PDF."""
-    images = convert_from_bytes(file_bytes, dpi=300)
-    return "\n".join(_ocr_image(img) for img in images)
-
-
-def _ocr_pdf_page(file_bytes: bytes, page_index: int) -> str:
-    """OCR одной конкретной страницы PDF (нумерация с 0)."""
-    images = convert_from_bytes(
-        file_bytes, dpi=300, first_page=page_index + 1, last_page=page_index + 1
-    )
-    return _ocr_image(images[0]) if images else ""
-
+# ---------------------------------------------------------------------------
+# Картинки (отдельные файлы)
+# ---------------------------------------------------------------------------
 
 def extract_text_from_image(file_bytes: bytes) -> str:
-    """OCR отдельного файла-картинки."""
-    image = Image.open(io.BytesIO(file_bytes))
-    # Конвертируем в RGB (на случай палитры/альфы)
-    if image.mode not in ("RGB", "L"):
-        image = image.convert("RGB")
-    return _ocr_image(image)
+    return _ocr_image_bytes(file_bytes)
 
+
+# ---------------------------------------------------------------------------
+# Точка входа
+# ---------------------------------------------------------------------------
 
 def extract_text(file_bytes: bytes, filename: str) -> dict:
-    """Определяет формат по расширению и извлекает текст."""
     name = filename.lower()
 
     if name.endswith(".docx"):

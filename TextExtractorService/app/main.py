@@ -1,12 +1,13 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.extractors import extract_text
 
 app = FastAPI(
     title="Text Extractor API",
-    description="Сервис извлечения текста из DOCX и PDF файлов",
-    version="1.0.0",
+    description="Сервис извлечения текста из DOCX / PDF / изображений (с OCR)",
+    version="1.1.0",
 )
 
 ALLOWED_EXTENSIONS = (
@@ -35,7 +36,7 @@ async def extract(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
         raise HTTPException(
             status_code=400,
-            detail="Поддерживаются только файлы .docx и .pdf",
+            detail="Поддерживаются только файлы .docx, .pdf и изображения",
         )
 
     file_bytes = await file.read()
@@ -50,7 +51,8 @@ async def extract(file: UploadFile = File(...)):
         )
 
     try:
-        result = extract_text(file_bytes, file.filename)
+        # Тяжёлый парсинг + OCR — уводим из event loop
+        result = await run_in_threadpool(extract_text, file_bytes, file.filename)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
