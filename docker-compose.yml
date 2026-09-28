@@ -81,7 +81,7 @@ services:
     container_name: text-extractor
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "18000:8000"
     networks:
       - default
 

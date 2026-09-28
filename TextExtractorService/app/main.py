@@ -9,7 +9,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-ALLOWED_EXTENSIONS = (".docx", ".pdf")
+ALLOWED_EXTENSIONS = (
+    ".docx", ".pdf",
+    ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp",
+)
+
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
