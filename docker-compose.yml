@@ -75,6 +75,15 @@ services:
     restart: always
     ports:
       - 8080:8080
+    
+  text-extractor:
+    build: ./TextExtractorService
+    container_name: text-extractor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - default
 
 volumes:
   ollama_data:
