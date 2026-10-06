@@ -7,13 +7,13 @@
           "allowFileUploads": true
         }
       },
-      "id": "417bbc8f-1083-4efc-99ec-f21b2f96958e",
+      "id": "02df7903-06dd-4773-98da-d38ac62be458",
       "name": "When chat message received",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
       "position": [
         -448,
-        112
+        -128
       ],
       "webhookId": "your-webhook-id"
     },
@@ -36,7 +36,7 @@
           "timeout": 60000
         }
       },
-      "id": "0fe227c7-2e12-4449-a4b7-30943af0e8b3",
+      "id": "c10551c9-2f28-4c78-ab8e-3b673925de58",
       "name": "Extract Text API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -59,15 +59,15 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.2,
       "position": [
-        -448,
-        352
+        -464,
+        64
       ],
-      "id": "62519107-8ced-47b2-9e1c-f458f23c5edc",
+      "id": "f49ab9b2-d225-468d-9584-6c0b5a6becaa",
       "name": "When Executed by Another Workflow"
     },
     {
       "parameters": {
-        "model": "nomic-embed-text-v2-moe:latest"
+        "model": "bge-m3:latest"
       },
       "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "typeVersion": 1,
@@ -75,18 +75,27 @@
         672,
         448
       ],
-      "id": "f2ed03b7-5c3e-45e8-898b-7517c4edf8ad",
+      "id": "6a980cef-5476-4cbd-8d11-0ce26eaa3a50",
       "name": "Embeddings Ollama2",
       "credentials": {
         "ollamaApi": {
-          "id": "ZtyIIH3VoSnayVjx",
+          "id": "JCcDxgFLDjodZjrx",
           "name": "Ollama account"
         }
       }
     },
     {
       "parameters": {
-        "options": {}
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "filename",
+                "value": "={{ $json.filename }}"
+              }
+            ]
+          }
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1.1,
@@ -94,7 +103,7 @@
         832,
         448
       ],
-      "id": "26e73730-802c-4b05-8e98-c05f68b83c4b",
+      "id": "e1b31b87-4f7d-4b48-9fa2-441f99fe1f18",
       "name": "Default Data Loader"
     },
     {
@@ -108,11 +117,11 @@
         720,
         192
       ],
-      "id": "496736eb-73a0-46d0-834d-73320c0be054",
+      "id": "62317151-d30d-4551-be86-1fd2ab28620c",
       "name": "Postgres PGVector Store",
       "credentials": {
         "postgres": {
-          "id": "JfbSH2HxU6vvJtda",
+          "id": "zVaqpsdxinRfBsNw",
           "name": "Postgres account"
         }
       }
@@ -181,12 +190,11 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "3f0016ab-c498-4e6f-81dc-2693f3966e3f",
+  "versionId": "46998d2e-a4a3-4027-ba02-bb640c28ce5d",
   "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "7b8b080e9b915bcf0522ea98bbf976a27b188b642e2f4103e967811b3df1b645"
+    "instanceId": "fdd312c21856d78c20ce587048c1e309eba1783260637bcbca85f982c4f48958"
   },
   "nodeGroups": [],
-  "id": "6W0bijsfkRatxT1P",
+  "id": "QZmnxKW6ivDHB6IR",
   "tags": []
 }
