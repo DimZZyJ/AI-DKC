@@ -1,3 +1,4 @@
+import csv
 import io
 import logging
 
@@ -6,6 +7,7 @@ from docx.document import Document as DocxDocument
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from openpyxl import load_workbook
 from PIL import Image
 from pypdf import PdfReader
 import pytesseract
@@ -17,7 +19,7 @@ OCR_LANGS = "rus+eng"
 PDF_TEXT_THRESHOLD = 20
 PDF_OCR_DPI = 300
 
-
+CSV_DELIMITERS = [",", ";", "\t", "|"] 
 # ---------------------------------------------------------------------------
 # OCR
 # ---------------------------------------------------------------------------
@@ -199,24 +201,127 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 def extract_text_from_image(file_bytes: bytes) -> str:
     return _ocr_image_bytes(file_bytes)
 
+# ---------------------------------------------------------------------------
+# XLSX
+# ---------------------------------------------------------------------------
+
+def extract_text_from_xlsx(file_bytes: bytes) -> str:
+    """
+    Извлекает текст из XLSX.
+    Обходит листы в их порядке, внутри листа — строки сверху вниз,
+    столбцы слева направо. Пустые ячейки превращаются в пустые
+    строки (сохраняется структура таблицы).
+    """
+    try:
+        workbook = load_workbook(
+            io.BytesIO(file_bytes),
+            read_only=True,
+            data_only=True,   # берём значения, а не формулы
+        )
+    except Exception as e:
+        raise ValueError(f"Не удалось открыть XLSX: {e}")
+
+    parts: list[str] = []
+
+    for sheet_name in workbook.sheetnames:
+        sheet = workbook[sheet_name]
+        parts.append(f"### {sheet_name}")
+
+        for row in sheet.iter_rows(values_only=True):
+            # Преобразуем значения ячеек в строки, None -> ""
+            cells = ["" if v is None else str(v) for v in row]
+
+            # Пропускаем полностью пустые строки
+            if not any(cell.strip() for cell in cells):
+                continue
+
+            # Склеиваем через табуляцию — так сохраняется структура колонок
+            parts.append("\t".join(cells))
+
+        parts.append("")  # пустая строка между листами
+
+    workbook.close()
+    return "\n".join(parts).rstrip()
+
+
+# ---------------------------------------------------------------------------
+# CSV
+# ---------------------------------------------------------------------------
+
+def _detect_csv_delimiter(sample: str) -> str:
+    """
+    Определяет разделитель CSV по первой непустой строке.
+    По умолчанию — запятая.
+    """
+    first_line = ""
+    for line in sample.splitlines():
+        if line.strip():
+            first_line = line
+            break
+
+    if not first_line:
+        return ","
+
+    # Считаем вхождения каждого разделителя
+    counts = {d: first_line.count(d) for d in CSV_DELIMITERS}
+    best = max(counts, key=counts.get)
+    return best if counts[best] > 0 else ","
+
+
+def extract_text_from_csv(file_bytes: bytes) -> str:
+    """
+    Извлекает текст из CSV.
+    Разделитель определяется автоматически (,, ;, \\t, |).
+    Кодировка — utf-8 с fallback на cp1251 и latin-1.
+    """
+    # Пробуем декодировать
+    text: str | None = None
+    for encoding in ("utf-8-sig", "utf-8", "cp1251", "latin-1"):
+        try:
+            text = file_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if text is None:
+        raise ValueError("Не удалось определить кодировку CSV")
+
+    delimiter = _detect_csv_delimiter(text)
+
+    parts: list[str] = []
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+
+    for row in reader:
+        if not any(cell.strip() for cell in row):
+            continue
+        # Склеиваем через табуляцию — так удобнее читать
+        parts.append("\t".join(row))
+
+    return "\n".join(parts)
 
 # ---------------------------------------------------------------------------
 # Точка входа
 # ---------------------------------------------------------------------------
 
 def extract_text(file_bytes: bytes, filename: str) -> dict:
+    """Определяет формат по расширению и извлекает текст."""
     name = filename.lower()
 
     if name.endswith(".docx"):
         text, file_type = extract_text_from_docx(file_bytes), "docx"
     elif name.endswith(".pdf"):
         text, file_type = extract_text_from_pdf(file_bytes), "pdf"
+    elif name.endswith((".xlsx", ".xlsm")):
+        text, file_type = extract_text_from_xlsx(file_bytes), "xlsx"
+    elif name.endswith(".csv"):
+        text, file_type = extract_text_from_csv(file_bytes), "csv"
     elif name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")):
         text, file_type = extract_text_from_image(file_bytes), "image"
     else:
         raise ValueError(
             f"Неподдерживаемый формат файла: {filename}. "
-            "Поддерживаются: .docx, .pdf, .png, .jpg, .jpeg, .tiff, .bmp, .webp"
+            "Поддерживаются: .docx, .pdf, .xlsx, .xlsm, .csv, "
+            ".png, .jpg, .jpeg, .tiff, .bmp, .webp"
         )
 
     return {

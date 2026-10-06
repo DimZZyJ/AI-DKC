@@ -12,6 +12,7 @@ app = FastAPI(
 
 ALLOWED_EXTENSIONS = (
     ".docx", ".pdf",
+    ".xlsx", ".xlsm", ".csv",
     ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp",
 )
 
@@ -36,7 +37,7 @@ async def extract(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
         raise HTTPException(
             status_code=400,
-            detail="Поддерживаются только файлы .docx, .pdf и изображения",
+            detail="Формат файла не подддерживаетсяы",
         )
 
     file_bytes = await file.read()
