@@ -299,6 +299,26 @@ def extract_text_from_csv(file_bytes: bytes) -> str:
 
     return "\n".join(parts)
 
+
+# ---------------------------------------------------------------------------
+# Markdown
+# ---------------------------------------------------------------------------
+
+def extract_text_from_markdown(file_bytes: bytes) -> str:
+    """Возвращает содержимое Markdown-файла как есть (текст)."""
+    text: str | None = None
+    for encoding in ("utf-8-sig", "utf-8", "cp1251", "latin-1"):
+        try:
+            text = file_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if text is None:
+        raise ValueError("Не удалось определить кодировку Markdown")
+
+    return text.strip()
+
 # ---------------------------------------------------------------------------
 # Точка входа
 # ---------------------------------------------------------------------------
@@ -315,12 +335,14 @@ def extract_text(file_bytes: bytes, filename: str) -> dict:
         text, file_type = extract_text_from_xlsx(file_bytes), "xlsx"
     elif name.endswith(".csv"):
         text, file_type = extract_text_from_csv(file_bytes), "csv"
+    elif name.endswith(".md"):
+        text, file_type = extract_text_from_markdown(file_bytes), "md"
     elif name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")):
         text, file_type = extract_text_from_image(file_bytes), "image"
     else:
         raise ValueError(
             f"Неподдерживаемый формат файла: {filename}. "
-            "Поддерживаются: .docx, .pdf, .xlsx, .xlsm, .csv, "
+            "Поддерживаются: .docx, .pdf, .xlsx, .xlsm, .csv, .md, "
             ".png, .jpg, .jpeg, .tiff, .bmp, .webp"
         )
 

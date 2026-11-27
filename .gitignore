@@ -1,0 +1,3 @@
+# Runtime data (docker volumes bind-mounted into project)
+/data/
+/files/

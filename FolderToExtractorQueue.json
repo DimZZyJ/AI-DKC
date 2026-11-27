@@ -1,0 +1,150 @@
+{
+  "name": "FolderToExtractorQueue",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c1d2e3f4-0001-4a5b-8c6d-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1d2e3f4-0002-4a5b-8c6d-000000000002",
+              "name": "folder",
+              "value": "/files",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0002-4a5b-8c6d-000000000002",
+      "name": "Set Folder",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -416,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "={{ $json.folder }}/**/*.{md,pdf,docx,xlsx,xlsm,csv,png,jpg,jpeg,tiff,tif,bmp,webp}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "c1d2e3f4-0003-4a5b-8c6d-000000000003",
+      "name": "Read Files From Folder",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://text-extractor:8000/ingest",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "c1d2e3f4-0004-4a5b-8c6d-000000000004",
+      "name": "Send To Extractor Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c1d2e3f4-0005-4a5b-8c6d-000000000005",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        256,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Folder": {
+      "main": [
+        [
+          {
+            "node": "Read Files From Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Files From Folder": {
+      "main": [
+        [
+          {
+            "node": "Send To Extractor Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send To Extractor Queue": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

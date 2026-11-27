@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = (
     ".docx", ".pdf",
-    ".xlsx", ".xlsm", ".csv",
+    ".xlsx", ".xlsm", ".csv", ".md",
     ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp",
 )
 
