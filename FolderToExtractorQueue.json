@@ -52,7 +52,8 @@
       "position": [
         -192,
         0
-      ]
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -80,6 +81,18 @@
       "position": [
         32,
         0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "id": "c1d2e3f4-0006-4a5b-8c6d-000000000006",
+      "name": "Skipped Files",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        256,
+        224
       ]
     },
     {
@@ -134,6 +147,13 @@
         [
           {
             "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skipped Files",
             "type": "main",
             "index": 0
           }

@@ -51,6 +51,8 @@ services:
       - N8N_BASIC_AUTH_USER=admin
       - N8N_BASIC_AUTH_PASSWORD=yourpassword
       - NODE_FUNCTION_ALLOW_BUILTIN=*
+      - WEBHOOK_URL=http://localhost:8080/
+      - N8N_SECURE_COOKIE=false
       - NODE_FUNCTION_ALLOW_EXTERNAL=jszip,mammoth,pdf-parse
       # n8n 2.x по умолчанию разрешает Read/Write Files только ~/.n8n-files.
       # Добавляем /files, куда смонтирована папка docs (см. volumes ниже).

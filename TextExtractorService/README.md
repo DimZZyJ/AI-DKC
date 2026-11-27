@@ -89,6 +89,13 @@ curl -F "file=@document.pdf" http://localhost:18000/ingest
 в n8n. Воркфлоу читает все поддерживаемые файлы из папки `/files` внутри
 контейнера n8n и отправляет каждый файл в `/ingest`.
 
+Файлы, которые не удалось прочитать или которые `/ingest` отверг (например,
+слишком большой или с неподдерживаемым содержимым), не прерывают обработку:
+узел **Send To Extractor Queue** настроен на `Continue (using error output)`,
+поэтому ошибочные элементы уходят в ветку **Skipped Files**, а остальные файлы
+по-прежнему попадают в **Done**. Запросы, вернувшие ошибку, можно посмотреть
+в журнале executions n8n на узле **Skipped Files**.
+
 В `docker-compose.yml` путь `/files` добавлен в `N8N_RESTRICT_FILE_ACCESS_TO` —
 иначе n8n 2.x блокирует чтение (`Access to the file is not allowed.`), потому что
 по умолчанию узел Read/Write Files имеет доступ только к `~/.n8n-files`.
