@@ -24,6 +24,7 @@ services:
       ollama pull nomic-embed-text-v2-moe &&
       ollama pull bge-m3 &&
       ollama pull qwen2.5:7b-instruct &&
+      ollama pull qwen3.8:27b-q4_K_M &&
       wait
       "
 
