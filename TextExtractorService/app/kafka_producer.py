@@ -1,27 +1,31 @@
+import base64
 import json
-import os
 import uuid
+from datetime import datetime, timezone
 
 from aiokafka import AIOKafkaProducer
 
-BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-TOPIC = os.getenv("KAFKA_TOPIC", "documents.extracted")
-DLQ_TOPIC = os.getenv("KAFKA_DLQ_TOPIC", "documents.failed")
+from app import kafka_settings as ks
 
-# Лимит брокера 2 МБ, у aiokafka max_request_size по умолчанию 1 МБ.
-# Берём с запасом: кириллица = 2 байта/символ, JSON добавляет служебные поля.
-MAX_MSG_BYTES = 500_000
+# Оставлено для совместимости: максимальный размер текстового чанка.
+MAX_MSG_BYTES = ks.MAX_TEXT_CHUNK_BYTES
 
 _producer: AIOKafkaProducer | None = None
+
+
+def _serialize(value: dict) -> bytes:
+    return json.dumps(value, ensure_ascii=False).encode("utf-8")
 
 
 async def start_producer() -> None:
     global _producer
     _producer = AIOKafkaProducer(
-        bootstrap_servers=BOOTSTRAP,
+        bootstrap_servers=ks.BOOTSTRAP,
         acks="all",
         enable_idempotence=True,
-        value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
+        # Файл в base64 больше дефолтного лимита aiokafka (1 МБ).
+        max_request_size=ks.MAX_MESSAGE_BYTES,
+        value_serializer=_serialize,
         key_serializer=lambda k: k.encode("utf-8"),
     )
     await _producer.start()
@@ -32,6 +36,10 @@ async def stop_producer() -> None:
     if _producer is not None:
         await _producer.stop()
         _producer = None
+
+
+def is_ready() -> bool:
+    return _producer is not None
 
 
 def new_doc_id() -> str:
@@ -71,14 +79,45 @@ def split_by_bytes(text: str, max_bytes: int = MAX_MSG_BYTES) -> list[str]:
     return chunks or [""]
 
 
+async def publish_task(doc_id: str, filename: str, file_bytes: bytes) -> None:
+    """Ставит задачу на распознавание файла в очередь Kafka."""
+    assert _producer is not None, "Kafka producer не запущен"
+
+    value = {
+        "doc_id": doc_id,
+        "filename": filename,
+        "file_base64": base64.b64encode(file_bytes).decode("ascii"),
+        "size_bytes": len(file_bytes),
+        "enqueued_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # base64 увеличивает данные примерно на 1/3 — проверяем до отправки,
+    # чтобы получить понятную ошибку вместо таймаута в send_and_wait.
+    payload_size = len(_serialize(value))
+    if payload_size > ks.MAX_MESSAGE_BYTES:
+        raise ValueError(
+            f"Файл слишком большой для очереди Kafka: "
+            f"{payload_size} байт при лимите {ks.MAX_MESSAGE_BYTES}"
+        )
+
+    await _producer.send_and_wait(
+        ks.TASKS_TOPIC,
+        key=doc_id,
+        value=value,
+    )
+
+
 async def publish_extracted(doc_id: str, result: dict) -> int:
-    """Публикует текст документа в топик. Возвращает число отправленных сообщений."""
+    """Публикует текст документа в очередь embedding-обработки.
+
+    Возвращает число отправленных сообщений.
+    """
     assert _producer is not None, "Kafka producer не запущен"
 
     parts = split_by_bytes(result["text"])
     for i, part in enumerate(parts):
         await _producer.send_and_wait(
-            TOPIC,
+            ks.EXTRACTED_TOPIC,
             key=doc_id,  # один ключ -> одна партиция -> порядок частей сохраняется
             value={
                 "doc_id": doc_id,
@@ -92,11 +131,21 @@ async def publish_extracted(doc_id: str, result: dict) -> int:
     return len(parts)
 
 
-async def publish_failed(doc_id: str, filename: str, error: str) -> None:
+async def publish_failed(
+    doc_id: str,
+    filename: str,
+    error: str,
+    stage: str = "ocr",
+) -> None:
     assert _producer is not None, "Kafka producer не запущен"
 
     await _producer.send_and_wait(
-        DLQ_TOPIC,
+        ks.DLQ_TOPIC,
         key=doc_id,
-        value={"doc_id": doc_id, "filename": filename, "error": error},
+        value={
+            "doc_id": doc_id,
+            "filename": filename,
+            "stage": stage,
+            "error": error,
+        },
     )

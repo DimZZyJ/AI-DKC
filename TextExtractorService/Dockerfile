@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 LABEL maintainer="you@example.com"
-LABEL description="Text Extractor API: DOCX/PDF/XLSX/CSV/Image to Kafka with OCR"
+LABEL description="Text Extractor: OCR tasks queue in Kafka + extracted text queue for embeddings"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,9 +9,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TESSERACT_LANG=rus+eng \
     KAFKA_BOOTSTRAP=kafka:9092 \
+    KAFKA_TASKS_TOPIC=documents.extract.tasks \
     KAFKA_TOPIC=documents.extracted \
     KAFKA_DLQ_TOPIC=documents.failed \
-    MAX_CONCURRENT_JOBS=2
+    KAFKA_CONSUMER_GROUP=text-extractor-ocr \
+    KAFKA_MAX_MESSAGE_BYTES=33554432
 
 WORKDIR /app
 

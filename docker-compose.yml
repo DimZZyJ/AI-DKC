@@ -101,7 +101,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_MESSAGE_MAX_BYTES: 2097152
+      KAFKA_MESSAGE_MAX_BYTES: 33554432  # 32 МБ: файлы до 20 МБ в base64
       KAFKA_LOG_RETENTION_HOURS: 168
     volumes:
       - kafka_data:/var/lib/kafka/data
@@ -121,6 +121,7 @@ services:
     restart: "no"
     entrypoint: >
       /bin/sh -c "
+      /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.extract.tasks --partitions 3 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.extracted --partitions 3 --replication-factor 1 &&
       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.failed --partitions 1 --replication-factor 1
       "
@@ -146,8 +147,34 @@ services:
       - "18000:8000"
     environment:
       - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TASKS_TOPIC=documents.extract.tasks
       - KAFKA_TOPIC=documents.extracted
       - KAFKA_DLQ_TOPIC=documents.failed
+      - KAFKA_MAX_MESSAGE_BYTES=33554432
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - default
+
+  # ---------------------------------------------------------------------------
+  # Worker: распознаёт текст из задач Kafka и кладёт его в documents.extracted
+  # Масштабируется: docker compose up --scale text-extractor-worker=3
+  # ---------------------------------------------------------------------------
+  text-extractor-worker:
+    build: ./TextExtractorService
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TASKS_TOPIC=documents.extract.tasks
+      - KAFKA_TOPIC=documents.extracted
+      - KAFKA_DLQ_TOPIC=documents.failed
+      - KAFKA_CONSUMER_GROUP=text-extractor-ocr
+      - KAFKA_MAX_MESSAGE_BYTES=33554432
+      - LOG_LEVEL=INFO
+    healthcheck:
+      disable: true  # у воркера нет HTTP-порта
     depends_on:
       kafka-init:
         condition: service_completed_successfully

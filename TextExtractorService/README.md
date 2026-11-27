@@ -1,0 +1,89 @@
+# TextExtractorService
+
+Сервис принимает файлы, ставит распознавание текста (OCR) в очередь Kafka,
+а готовый текст отправляет в следующую очередь — на обработку embedding-моделью
+и запись в векторную базу (PGVector через n8n).
+
+## Поток данных
+
+```text
+POST /ingest (API)
+    │  задача: doc_id, filename, file_base64
+    ▼
+documents.extract.tasks  ──► text-extractor-worker (OCR)
+                                    │  текст, разбитый на чанки
+                                    ▼
+                          documents.extracted ──► n8n → embedding → PGVector
+
+Любая ошибка ──► documents.failed (DLQ)
+```
+
+## Топики
+
+| Топик | Назначение | Ключ | Партиций |
+|---|---|---|---|
+| `documents.extract.tasks` | Задачи на распознавание файлов | `doc_id` | 3 |
+| `documents.extracted` | Готовый текст для embedding-модели | `doc_id` | 3 |
+| `documents.failed` | Ошибки OCR/валидации задачи | `doc_id` | 1 |
+
+Сообщение задачи:
+
+```json
+{
+  "doc_id": "...",
+  "filename": "document.pdf",
+  "file_base64": "...",
+  "size_bytes": 12345,
+  "enqueued_at": "2026-11-26T20:00:00+00:00"
+}
+```
+
+Сообщение с текстом (поле `text` ограничено 500 КБ UTF-8):
+
+```json
+{
+  "doc_id": "...",
+  "filename": "document.pdf",
+  "file_type": "pdf",
+  "chunk_index": 0,
+  "chunks_total": 2,
+  "text": "..."
+}
+```
+
+## Конфигурация
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `KAFKA_BOOTSTRAP` | `kafka:9092` | Адрес брокера |
+| `KAFKA_TASKS_TOPIC` | `documents.extract.tasks` | Очередь OCR-задач |
+| `KAFKA_TOPIC` | `documents.extracted` | Очередь текста для embedding |
+| `KAFKA_DLQ_TOPIC` | `documents.failed` | Очередь ошибок |
+| `KAFKA_CONSUMER_GROUP` | `text-extractor-ocr` | Группа consumer-ов воркера |
+| `KAFKA_MAX_MESSAGE_BYTES` | `33554432` | Лимит сообщения (файл до 20 МБ в base64) |
+| `LOG_LEVEL` | `INFO` | Уровень логов воркера |
+
+## Запуск
+
+```sh
+docker compose up -d --build
+docker compose logs -f text-extractor-worker
+
+# Несколько воркеров для параллельного OCR:
+docker compose up -d --scale text-extractor-worker=3
+```
+
+Проверка:
+
+```sh
+curl -F "file=@document.pdf" http://localhost:18000/ingest
+```
+
+## Гарантии
+
+- Задача коммитится только после публикации текста или ошибки в DLQ
+  (at-least-once). При сбое между публикацией и коммитом возможны повторы —
+  потребителям следует учитывать пару `doc_id` + `chunk_index`.
+- Чанки с одинаковым `doc_id` попадают в одну партицию, поэтому порядок
+  чанков сохраняется.
+- `/extract` остался синхронным режимом для отладки и в Kafka ничего не пишет.
